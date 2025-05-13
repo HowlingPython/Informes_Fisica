@@ -37,7 +37,7 @@ def batch_convert(input_dir: str, output_dir: str):
         return
 
     # tqdm mostrará: Convirtiendo:  30%|███       | 3/10 [00:12<00:30, 0.23vídeo/s]
-    for mov in tqdm(mov_files, desc="Convirtiendo", unit="vídeo"):
+    for mov in tqdm(mov_files, desc="Convirtiendo", unit="video"):
         base = os.path.splitext(os.path.basename(mov))[0]
         mp4  = os.path.join(output_dir, f"{base}.mp4")
         convert_mov_to_mp4(mov, mp4)
