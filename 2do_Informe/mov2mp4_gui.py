@@ -17,6 +17,7 @@ load_dotenv()
 FFMPEG_BIN = os.environ.get("FFMPEG_BIN", "ffmpeg")
 DEFAULT_CRF = os.environ.get("DEFAULT_CRF", "18")
 DEFAULT_PRESET = os.environ.get("DEFAULT_PRESET", "medium")
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "3"))
 
 LOG_FILE = Path.home() / ".mov2mp4_converter.log"
 logging.basicConfig(
@@ -57,19 +58,26 @@ def convert_mov_to_mp4(input_path: Path, output_dir: Path, crf: str, preset: str
 def run_conversion(files, out_dir, crf, preset, progress_queue, cancel_event):
     total = len(files)
     completed = 0
-    with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as execr:
-        futures = {
-            execr.submit(convert_mov_to_mp4, Path(f), Path(out_dir), crf, preset): f
-            for f in files
-        }
-        for future in as_completed(futures):
-            if cancel_event.is_set():
-                break
-            inp, success, err = future.result()
-            completed += 1
-            progress = completed / total * 100
-            progress_queue.put(("progress", progress))
-            progress_queue.put(("status", f"{completed}/{total}"))
+    batch_size = BATCH_SIZE  # Limita la cantidad de procesos simultáneos
+
+    for i in range(0, total, batch_size):
+        if cancel_event.is_set():
+            break
+        batch = files[i:i+batch_size]
+        with ThreadPoolExecutor(max_workers=batch_size) as execr:
+            futures = [
+                execr.submit(convert_mov_to_mp4, Path(f), Path(out_dir), crf, preset)
+                for f in batch
+            ]
+            for future in futures:
+                if cancel_event.is_set():
+                    break
+                inp, success, err = future.result()
+                completed += 1
+                progress = completed / total * 100
+                progress_queue.put(("progress", progress))
+                progress_queue.put(("status", f"{completed}/{total}"))
+
     if cancel_event.is_set():
         progress_queue.put(("done", ("info", "Conversión cancelada.")))
     else:
