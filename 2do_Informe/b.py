@@ -255,5 +255,5 @@ def main(data_folder: str, distance: int = 15) -> None:
     export_results(df_results, df_g)
 
 if __name__ == '__main__':
-    data_folder = r'C:\Users\morph\Desktop\UDESA\fisica\Informes_Fisica\2do_Informe\CSVs'  # Change accordingly
+    data_folder = r'C:\Users\morph\Desktop\UDESA\fisica\Informes_Fisica\2do_Informe\CSVs' 
     main(data_folder)
