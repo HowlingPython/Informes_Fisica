@@ -22,8 +22,7 @@ try:
     env_batch = os.environ.get("BATCH_SIZE")
     max_safe_batch = max(1, max_threads // FFMPEG_THREADS)
     BATCH_SIZE = (
-        max(1, min(int(env_batch), max_safe_batch)) if env_batch
-        else max_safe_batch
+        max(1, min(int(env_batch), max_safe_batch)) if env_batch else max_safe_batch
     )
 except Exception:
     FFMPEG_THREADS = 1
@@ -38,30 +37,44 @@ handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3)
 logging.basicConfig(
     handlers=[handler],
     level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s:%(message)s"
+    format="%(asctime)s %(levelname)s:%(message)s",
 )
 
+
 # ─── Conversion ────────────────────────────────────────────────────────────────
-def convert_mov_to_mp4(input_path: Path, output_dir: Path, crf: str, preset: str, cancel_event):
+def convert_mov_to_mp4(
+    input_path: Path, output_dir: Path, crf: str, preset: str, cancel_event
+):
     try:
         base = input_path.stem
         out_file = output_dir / f"{base}.mp4"
         cmd = [
             FFMPEG_BIN,
             "-hide_banner",
-            "-loglevel", "error",
+            "-loglevel",
+            "error",
             "-y",
-            "-i", str(input_path),
-            "-c:v", "libx264",
-            "-crf", crf,
-            "-preset", preset,
-            "-threads", str(FFMPEG_THREADS),
-            str(out_file)
+            "-i",
+            str(input_path),
+            "-c:v",
+            "libx264",
+            "-crf",
+            crf,
+            "-preset",
+            preset,
+            "-threads",
+            str(FFMPEG_THREADS),
+            str(out_file),
         ]
-        creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL,
-                                   creationflags=creationflags)
+        creationflags = (
+            subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+        )
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
 
         while process.poll() is None:
             if cancel_event.is_set():
@@ -71,13 +84,14 @@ def convert_mov_to_mp4(input_path: Path, output_dir: Path, crf: str, preset: str
                         out_file.unlink()
                     except Exception as e:
                         logging.warning("No se pudo borrar %s: %s", out_file, str(e))
-                return (input_path, False, "Cancelado por el usuario")            
+                return (input_path, False, "Cancelado por el usuario")
             threading.Event().wait(0.1)
 
         return process.returncode == 0
     except Exception as e:
         logging.exception("Error processing file: %s", input_path)
         return False
+
 
 # ─── Conversion Runner ─────────────────────────────────────────────────────────
 def run_conversion(files, out_dir, crf, preset, progress_queue, cancel_event):
@@ -87,10 +101,17 @@ def run_conversion(files, out_dir, crf, preset, progress_queue, cancel_event):
     for i in range(0, total, BATCH_SIZE):
         if cancel_event.is_set():
             break
-        batch = files[i:i + BATCH_SIZE]
+        batch = files[i : i + BATCH_SIZE]
         with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
             futures = [
-                executor.submit(convert_mov_to_mp4, Path(f), Path(out_dir), crf, preset, cancel_event)
+                executor.submit(
+                    convert_mov_to_mp4,
+                    Path(f),
+                    Path(out_dir),
+                    crf,
+                    preset,
+                    cancel_event,
+                )
                 for f in batch
             ]
             for future in as_completed(futures):
@@ -101,8 +122,13 @@ def run_conversion(files, out_dir, crf, preset, progress_queue, cancel_event):
                 progress_queue.put(("progress", progress))
                 progress_queue.put(("status", f"{completed}/{total}"))
 
-    msg = "Conversión cancelada." if cancel_event.is_set() else "Conversión completada. Abrir carpeta de salida?"
+    msg = (
+        "Conversión cancelada."
+        if cancel_event.is_set()
+        else "Conversión completada. Abrir carpeta de salida?"
+    )
     progress_queue.put(("done", ("info", msg)))
+
 
 # ─── GUI ────────────────────────────────────────────────────────────────────────
 class ConverterGUI(tk.Tk):
@@ -114,18 +140,26 @@ class ConverterGUI(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.status_var = tk.StringVar(value="Listo.")
-        self.progress = ttk.Progressbar(self, orient="horizontal", length=380, mode="determinate")
+        self.progress = ttk.Progressbar(
+            self, orient="horizontal", length=380, mode="determinate"
+        )
         self.queue = queue.Queue()
         self.cancel_event = threading.Event()
         self.crf_value = DEFAULT_CRF
         self.preset_value = DEFAULT_PRESET
 
-        self.btn_quality = tk.Button(self, text="Ajustes de calidad", command=self.show_quality_settings)
+        self.btn_quality = tk.Button(
+            self, text="Ajustes de calidad", command=self.show_quality_settings
+        )
         self.btn_quality.pack(pady=(10, 5))
 
-        self.btn_convert = tk.Button(self, text="Seleccionar y convertir", command=self.start)
+        self.btn_convert = tk.Button(
+            self, text="Seleccionar y convertir", command=self.start
+        )
         self.btn_convert.pack(pady=5)
-        self.btn_cancel = tk.Button(self, text="Cancelar", state="disabled", command=self.cancel)
+        self.btn_cancel = tk.Button(
+            self, text="Cancelar", state="disabled", command=self.cancel
+        )
         self.btn_cancel.pack()
 
         self.progress.pack(pady=(15, 5))
@@ -144,15 +178,35 @@ class ConverterGUI(tk.Tk):
         crf_entry = tk.Entry(frame, width=5)
         crf_entry.insert(0, self.crf_value)
         crf_entry.grid(row=0, column=1, padx=(0, 10))
-        crf_entry.bind("<Enter>", lambda e: self.status_var.set("CRF: Calidad del video (0-51, menor es mejor)"))
+        crf_entry.bind(
+            "<Enter>",
+            lambda e: self.status_var.set(
+                "CRF: Calidad del video (0-51, menor es mejor)"
+            ),
+        )
         crf_entry.bind("<Leave>", lambda e: self.status_var.set("Listo."))
 
         tk.Label(frame, text="Preset").grid(row=0, column=2)
-        preset_combo = ttk.Combobox(frame, values=["ultrafast", "superfast", "veryfast", "faster", "fast",
-                                                   "medium", "slow", "slower", "veryslow"], width=10)
+        preset_combo = ttk.Combobox(
+            frame,
+            values=[
+                "ultrafast",
+                "superfast",
+                "veryfast",
+                "faster",
+                "fast",
+                "medium",
+                "slow",
+                "slower",
+                "veryslow",
+            ],
+            width=10,
+        )
         preset_combo.set(self.preset_value)
         preset_combo.grid(row=0, column=3)
-        preset_combo.bind("<Enter>", lambda e: self.status_var.set("Preset: Velocidad vs compresión"))
+        preset_combo.bind(
+            "<Enter>", lambda e: self.status_var.set("Preset: Velocidad vs compresión")
+        )
         preset_combo.bind("<Leave>", lambda e: self.status_var.set("Listo."))
 
         def apply():
@@ -165,7 +219,7 @@ class ConverterGUI(tk.Tk):
                 messagebox.showerror("Error", "CRF debe ser un número entre 0 y 51.")
                 return
 
-            if preset_combo.get() not in preset_combo['values']:
+            if preset_combo.get() not in preset_combo["values"]:
                 messagebox.showerror("Error", "Preset inválido.")
                 return
 
@@ -175,10 +229,14 @@ class ConverterGUI(tk.Tk):
         tk.Button(top, text="Aplicar", command=apply).pack(pady=5)
 
     def start(self):
-        files = filedialog.askopenfilenames(filetypes=[("MOV", "*.mov")], title="Seleccionar archivos .mov")
-        if not files: return
+        files = filedialog.askopenfilenames(
+            filetypes=[("MOV", "*.mov")], title="Seleccionar archivos .mov"
+        )
+        if not files:
+            return
         out_dir = filedialog.askdirectory(title="Seleccionar carpeta de salida")
-        if not out_dir: return
+        if not out_dir:
+            return
 
         self.out_dir = out_dir
         self.btn_convert.config(state="disabled")
@@ -189,12 +247,15 @@ class ConverterGUI(tk.Tk):
         self.cancel_event.clear()
         threading.Thread(
             target=run_conversion,
-            args=(files, out_dir,
-                  self.crf_value,
-                  self.preset_value,
-                  self.queue,
-                  self.cancel_event),
-            daemon=True
+            args=(
+                files,
+                out_dir,
+                self.crf_value,
+                self.preset_value,
+                self.queue,
+                self.cancel_event,
+            ),
+            daemon=True,
         ).start()
         self.after(100, self._poll_queue)
 
@@ -238,7 +299,9 @@ class ConverterGUI(tk.Tk):
         self.destroy()
         sys.exit(0)
 
+
 # ─── Entrypoint ────────────────────────────────────────────────────────────────
+
 
 def main():
     if not shutil.which(FFMPEG_BIN):
@@ -249,10 +312,11 @@ def main():
     app = ConverterGUI()
     app.mainloop()
 
+
 if __name__ == "__main__":
     main()
-    
-    
+
+
 """
 Para copilar usar:
 
